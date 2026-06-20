@@ -1,6 +1,6 @@
 // Powered by OnSpace.AI
-// Full Inspector Panel — 7 tabs: LOG · CLS · MTH · FLD · MEM · CFG · WS
-import React, { useCallback, useRef, useState } from 'react';
+// Full Inspector Panel — 8 tabs: LOG · CLS · MTH · FLD · MEM · CFG · WS · EXP
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { ClassDetailPanel } from '@/components/feature/ClassDetailPanel';
 import { MemoryPatchEditor } from '@/components/feature/MemoryPatchEditor';
 import { HookConfigPanel } from '@/components/feature/HookConfigPanel';
 import { WsLiveModePanel } from '@/components/feature/WsLiveModePanel';
+import { ExportPanel } from '@/components/feature/ExportPanel';
 import { CallStackVisualizer } from '@/components/feature/CallStackVisualizer';
 import { AddressChip } from '@/components/ui/AddressChip';
 import { Badge } from '@/components/ui/Badge';
@@ -32,6 +33,7 @@ const TABS: { key: InspectorTab; icon: keyof typeof MaterialIcons.glyphMap; labe
   { key: 'patch',   icon: 'edit',         label: 'MEM' },
   { key: 'config',  icon: 'settings',     label: 'CFG' },
   { key: 'ws',      icon: 'wifi',         label: 'WS' },
+  { key: 'export',  icon: 'share',        label: 'EXP' },
 ];
 
 function TabBar() {
@@ -58,7 +60,7 @@ function TabBar() {
             <View style={styles.tabIconWrap}>
               <MaterialIcons
                 name={tab.icon}
-                size={12}
+                size={11}
                 color={active ? Colors.textGreen : Colors.textMuted}
               />
               {badge ? (
@@ -275,7 +277,6 @@ export function InspectorPanel() {
           <Pressable onPress={clearEvents} style={styles.toolBtn} hitSlop={8}>
             <MaterialIcons name="delete-sweep" size={15} color={Colors.textMuted} />
           </Pressable>
-          {/* Connection status pill */}
           <Pressable
             onPress={() => setActiveTab('ws')}
             style={[styles.toolBtn, styles.connPill]}
@@ -386,6 +387,11 @@ export function InspectorPanel() {
           {activeTab === 'ws' && (
             <View style={{ flex: 1 }}>
               <WsLiveModePanel />
+            </View>
+          )}
+          {activeTab === 'export' && (
+            <View style={{ flex: 1 }}>
+              <ExportPanel />
             </View>
           )}
         </View>
@@ -506,7 +512,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 5,
     alignItems: 'center',
     gap: 2,
   },
@@ -537,7 +543,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontFamily: 'monospace',
-    fontSize: FontSize.micro,
+    fontSize: 9,
     color: Colors.textMuted,
     fontWeight: '600',
     letterSpacing: 0.3,

@@ -1,7 +1,6 @@
 // Powered by OnSpace.AI
 // RVA Inspector — Main launcher screen
-// Run this app alongside (or injected into) the target game.
-// The floating inspector overlay appears on top of whatever is running.
+// Android-only · On-device loopback · No root · No PC required
 import React, { useState } from 'react';
 import {
   View,
@@ -11,7 +10,6 @@ import {
   Pressable,
   TextInput,
   Platform,
-  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -19,8 +17,17 @@ import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
 import { FloatingInspector } from '@/components/feature/FloatingInspector';
 import { useInspector } from '@/hooks/useInspector';
 import { MaterialIcons } from '@expo/vector-icons';
+import { EngineType } from '@/types/inspector';
 
-// ─── Connection Banner ───────────────────────────────────────
+const ENGINE_OPTIONS: { key: EngineType; label: string; module: string; color: string; icon: keyof typeof MaterialIcons.glyphMap }[] = [
+  { key: 'unity_il2cpp', label: 'Unity IL2CPP',  module: 'libil2cpp.so',        color: Colors.textCyan,   icon: 'videogame-asset' },
+  { key: 'unity_mono',   label: 'Unity Mono',    module: 'libmono.so',           color: Colors.textBlue,   icon: 'videogame-asset' },
+  { key: 'unreal',       label: 'Unreal Engine', module: 'libUE4.so / libUE5.so',color: Colors.textYellow, icon: 'sports-esports' },
+  { key: 'godot',        label: 'Godot Engine',  module: 'libgodot.so',          color: Colors.textPurple, icon: 'sports-esports' },
+  { key: 'native',       label: 'Native C/C++',  module: 'libgame.so',           color: Colors.textGreen,  icon: 'memory' },
+];
+
+// ─── Connection Banner ────────────────────────────────────────
 function ConnectionBanner() {
   const { wsState, connected, moduleInfo, events, classes, methods } = useInspector();
 
@@ -37,10 +44,10 @@ function ConnectionBanner() {
     Colors.textMuted;
 
   const label =
-    wsState.status === 'connected' ? 'CONNECTED' :
-    wsState.status === 'connecting' ? 'CONNECTING...' :
-    wsState.status === 'error' ? 'CONNECTION ERROR' :
-    'DISCONNECTED';
+    wsState.status === 'connected' ? 'AGENT CONNECTED' :
+    wsState.status === 'connecting' ? 'CONNECTING TO AGENT...' :
+    wsState.status === 'error' ? 'AGENT NOT FOUND' :
+    'AGENT DISCONNECTED';
 
   return (
     <View style={[styles.banner, { backgroundColor: bgColor, borderColor: dotColor + '40' }]}>
@@ -59,12 +66,6 @@ function ConnectionBanner() {
           ) : null}
         </View>
       ) : null}
-      {moduleInfo && connected ? (
-        <View style={styles.moduleTag}>
-          <MaterialIcons name="memory" size={10} color={Colors.textBlue} />
-          <Text style={styles.moduleTagText} numberOfLines={1}>{moduleInfo.name}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -74,6 +75,42 @@ function BannerStat({ label, value, color }: { label: string; value: number; col
     <View style={styles.bannerStat}>
       <Text style={[styles.bannerStatValue, { color }]}>{value}</Text>
       <Text style={styles.bannerStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Engine Selector ──────────────────────────────────────────
+function EngineSelector() {
+  const { engineType, setEngineType } = useInspector();
+
+  return (
+    <View style={styles.engineSection}>
+      <Text style={styles.sectionTitle}>TARGET ENGINE</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.engineScroll}>
+        {ENGINE_OPTIONS.map(eng => (
+          <Pressable
+            key={eng.key}
+            style={({ pressed }) => [
+              styles.engineChip,
+              engineType === eng.key && styles.engineChipActive,
+              pressed && { opacity: 0.75 },
+            ]}
+            onPress={() => setEngineType(eng.key)}
+          >
+            <MaterialIcons
+              name={eng.icon}
+              size={13}
+              color={engineType === eng.key ? eng.color : Colors.textMuted}
+            />
+            <View>
+              <Text style={[styles.engineLabel, engineType === eng.key && { color: eng.color }]}>
+                {eng.label}
+              </Text>
+              <Text style={styles.engineModule}>{eng.module}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -93,7 +130,7 @@ function QuickConnect() {
 
   return (
     <View style={styles.quickConnect}>
-      <Text style={styles.sectionTitle}>RELAY ENDPOINT</Text>
+      <Text style={styles.sectionTitle}>LOOPBACK ENDPOINT</Text>
       <View style={styles.endpointRow}>
         <TextInput
           style={styles.endpointInput}
@@ -123,19 +160,17 @@ function QuickConnect() {
             color={Colors.bg}
           />
           <Text style={styles.connectBtnText}>
-            {isConnected ? 'DISCONNECT' : isConnecting ? 'CONNECTING' : 'CONNECT'}
+            {isConnected ? 'DISCONNECT' : isConnecting ? 'WAIT' : 'CONNECT'}
           </Text>
         </Pressable>
       </View>
-
-      {/* Presets */}
       <View style={styles.presets}>
-        <Text style={styles.presetsLabel}>PRESETS:</Text>
+        <Text style={styles.presetsLabel}>QUICK:</Text>
         {[
-          { label: 'localhost', url: 'ws://127.0.0.1:9999' },
-          { label: 'USB ADB', url: 'ws://10.0.2.2:9999' },
-          { label: 'LAN', url: 'ws://192.168.1.100:9999' },
-          { label: 'port 8080', url: 'ws://127.0.0.1:8080' },
+          { label: ':9999', url: 'ws://127.0.0.1:9999' },
+          { label: ':8080', url: 'ws://127.0.0.1:8080' },
+          { label: ':7777', url: 'ws://127.0.0.1:7777' },
+          { label: ':1234', url: 'ws://127.0.0.1:1234' },
         ].map(p => (
           <Pressable
             key={p.label}
@@ -153,36 +188,87 @@ function QuickConnect() {
   );
 }
 
-// ─── Setup Guide ──────────────────────────────────────────────
-function SetupGuide() {
-  const steps = [
+// ─── Module Info Card ─────────────────────────────────────────
+function ModuleInfoCard() {
+  const { moduleInfo, connected } = useInspector();
+  if (!connected || !moduleInfo) return null;
+
+  return (
+    <View style={styles.moduleCard}>
+      <View style={styles.moduleCardHeader}>
+        <MaterialIcons name="memory" size={13} color={Colors.textGreen} />
+        <Text style={styles.moduleCardTitle}>ACTIVE MODULE</Text>
+      </View>
+      <View style={styles.moduleCardRows}>
+        {[
+          { label: 'NAME', value: moduleInfo.name, color: Colors.textGreen },
+          { label: 'BASE', value: moduleInfo.base, color: Colors.textYellow },
+          { label: 'SIZE', value: moduleInfo.size, color: Colors.textBlue },
+          { label: 'PATH', value: moduleInfo.path, color: Colors.textMuted },
+        ].map(row => (
+          <View key={row.label} style={styles.moduleRow}>
+            <Text style={styles.moduleRowLabel}>{row.label}</Text>
+            <Text style={[styles.moduleRowValue, { color: row.color }]} numberOfLines={1} selectable>
+              {row.value}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// ─── How It Works (No-Root Architecture) ──────────────────────
+function ArchitectureCard() {
+  return (
+    <View style={styles.archCard}>
+      <View style={styles.archHeader}>
+        <MaterialIcons name="phone-android" size={13} color={Colors.textGreen} />
+        <Text style={styles.archTitle}>HOW IT WORKS — NO ROOT · NO PC · ANDROID ONLY</Text>
+      </View>
+      <Text style={styles.archBody}>
+        The inspector agent is compiled directly into the target game as a shared library (.so). When the game process starts, the agent hooks methods internally and opens a loopback WebSocket server on this device. No external device, no USB cable, and no root access is needed.
+      </Text>
+    </View>
+  );
+}
+
+// ─── Integration Steps ────────────────────────────────────────
+function IntegrationSteps() {
+  const { engineType } = useInspector();
+  const eng = ENGINE_OPTIONS.find(e => e.key === engineType) ?? ENGINE_OPTIONS[0];
+
+  const steps: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail: string }[] = [
     {
-      icon: 'build' as const,
-      title: 'Build the C++ agent',
-      detail: 'Compile libinspect_agent.so from BRIDGE_INTEGRATION.md and inject it into the target game process via Zygisk/Frida/KernelSU.',
+      icon: 'code',
+      title: `Add agent to ${eng.label} project`,
+      detail: engineType === 'unity_il2cpp' || engineType === 'unity_mono'
+        ? 'Copy libinspect_agent.cpp into Assets/Plugins/Android/. Add to Android build. The agent auto-hooks IL2CPP methods and emits hook_event messages.'
+        : engineType === 'unreal'
+        ? 'Add as a ThirdParty or GameplayModule. Include InspectAgent.h and call InspectAgent::Init() in your GameInstance::Init(). Supports UClass reflection via UE metadata.'
+        : engineType === 'godot'
+        ? 'Build as a GDExtension .so. Register as extension in .gdextension file. Agent hooks GDScript virtual methods and C++ native calls automatically.'
+        : 'Link libinspect_agent.so at build time. Call inspect_agent_init(9999) early in your main() or JNI_OnLoad. Works with any ARM64 native binary.',
     },
     {
-      icon: 'cable' as const,
-      title: 'Forward the relay port',
-      detail: 'Over USB: adb forward tcp:9999 tcp:9999\nOver Wi-Fi: use the device LAN IP directly.',
+      icon: 'sports-esports',
+      title: 'Install & launch the game',
+      detail: `Install the modified APK on this Android device. When ${eng.module} loads, the agent starts automatically. It hooks all registered methods and opens ws://127.0.0.1:9999 on this device.`,
     },
     {
-      icon: 'wifi' as const,
-      title: 'Connect the inspector',
-      detail: 'Enter the endpoint above and tap CONNECT. The inspector will auto-reconnect on disconnect.',
-    },
-    {
-      icon: 'bug-report' as const,
-      title: 'Open the floating panel',
-      detail: 'Tap the green bug FAB (bottom-right). Hook events, class dumps, and memory data will stream live.',
+      icon: 'bug-report',
+      title: 'Connect & inspect live',
+      detail: 'Tap CONNECT in the WS tab or above. Hook events stream in real time. Use the floating panel (bug FAB) to overlay the inspector on top of the running game. Export session dumps via the EXP tab.',
     },
   ];
 
   return (
-    <View style={styles.guide}>
-      <View style={styles.guideHeader}>
-        <MaterialIcons name="integration-instructions" size={13} color={Colors.textBlue} />
-        <Text style={styles.guideTitleText}>INJECTION GUIDE</Text>
+    <View style={styles.stepsCard}>
+      <View style={styles.stepsHeader}>
+        <MaterialIcons name={eng.icon} size={13} color={eng.color} />
+        <Text style={[styles.stepsTitle, { color: eng.color }]}>
+          {eng.label.toUpperCase()} INTEGRATION
+        </Text>
       </View>
       {steps.map((s, i) => (
         <View key={i} style={styles.step}>
@@ -194,71 +280,13 @@ function SetupGuide() {
           </View>
           <View style={styles.stepContent}>
             <View style={styles.stepTitleRow}>
-              <MaterialIcons name={s.icon} size={12} color={Colors.textBlue} />
+              <MaterialIcons name={s.icon} size={11} color={Colors.textBlue} />
               <Text style={styles.stepTitle}>{s.title}</Text>
             </View>
             <Text style={styles.stepDetail}>{s.detail}</Text>
           </View>
         </View>
       ))}
-    </View>
-  );
-}
-
-// ─── Protocol Reference ───────────────────────────────────────
-function ProtocolReference() {
-  const messages = [
-    { dir: '←', type: 'hook_event', desc: 'Fired method with params, RVA, call stack' },
-    { dir: '←', type: 'class_dump', desc: 'Class metadata with fields and methods' },
-    { dir: '←', type: 'module_info', desc: 'Module base address and size' },
-    { dir: '←', type: 'patch_result', desc: 'Ack after memory patch applied/failed' },
-    { dir: '→', type: 'patch_memory', desc: 'Write bytes to absolute address' },
-    { dir: '→', type: 'hook_config', desc: 'Set per-method action/depth/condition' },
-    { dir: '→', type: 'ping', desc: 'Latency measurement (expects pong)' },
-  ];
-
-  return (
-    <View style={styles.protocol}>
-      <Text style={styles.sectionTitle}>WS PROTOCOL MESSAGES</Text>
-      {messages.map((m, i) => (
-        <View key={i} style={styles.protoRow}>
-          <Text style={[styles.protoDir, { color: m.dir === '←' ? Colors.textGreen : Colors.textBlue }]}>
-            {m.dir}
-          </Text>
-          <Text style={styles.protoType}>{m.type}</Text>
-          <Text style={styles.protoDesc}>{m.desc}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-// ─── Module Info Card ─────────────────────────────────────────
-function ModuleInfoCard() {
-  const { moduleInfo, connected } = useInspector();
-  if (!connected || !moduleInfo) return null;
-
-  return (
-    <View style={styles.moduleCard}>
-      <View style={styles.moduleCardHeader}>
-        <MaterialIcons name="memory" size={13} color={Colors.textGreen} />
-        <Text style={styles.moduleCardTitle}>TARGET MODULE</Text>
-      </View>
-      <View style={styles.moduleCardRows}>
-        <ModuleRow label="NAME" value={moduleInfo.name} color={Colors.textGreen} />
-        <ModuleRow label="BASE" value={moduleInfo.base} color={Colors.textYellow} />
-        <ModuleRow label="SIZE" value={moduleInfo.size} color={Colors.textBlue} />
-        <ModuleRow label="PATH" value={moduleInfo.path} color={Colors.textMuted} />
-      </View>
-    </View>
-  );
-}
-
-function ModuleRow({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <View style={styles.moduleRow}>
-      <Text style={styles.moduleRowLabel}>{label}</Text>
-      <Text style={[styles.moduleRowValue, { color }]} numberOfLines={1} selectable>{value}</Text>
     </View>
   );
 }
@@ -279,11 +307,14 @@ export default function InspectorScreen() {
           </View>
           <View>
             <Text style={styles.appTitle}>RVA INSPECTOR</Text>
-            <Text style={styles.appSub}>ARM64 · il2cpp · Unity · Godot</Text>
+            <Text style={styles.appSub}>Unity · Unreal · Godot · Native ARM64</Text>
           </View>
         </View>
         <View style={styles.headerRight}>
-          <Text style={styles.versionTag}>v2.0 LIVE</Text>
+          <View style={styles.androidBadge}>
+            <MaterialIcons name="phone-android" size={10} color={Colors.textGreen} />
+            <Text style={styles.androidBadgeText}>ANDROID</Text>
+          </View>
         </View>
       </View>
 
@@ -296,17 +327,20 @@ export default function InspectorScreen() {
         {/* Connection status */}
         <ConnectionBanner />
 
+        {/* Engine selector */}
+        <EngineSelector />
+
         {/* Quick connect */}
         <QuickConnect />
 
         {/* Module info (shown after connect) */}
         <ModuleInfoCard />
 
-        {/* Setup guide */}
-        <SetupGuide />
+        {/* Architecture explanation */}
+        <ArchitectureCard />
 
-        {/* Protocol reference */}
-        <ProtocolReference />
+        {/* Engine-specific integration steps */}
+        <IntegrationSteps />
 
         <View style={{ height: insets.bottom + 80 }} />
       </ScrollView>
@@ -360,29 +394,28 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 0.5,
   },
-  headerRight: {
-    alignItems: 'flex-end',
+  headerRight: {},
+  androidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryGlow,
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
   },
-  versionTag: {
+  androidBadgeText: {
     fontFamily: 'monospace',
     fontSize: FontSize.micro,
     color: Colors.textGreen,
-    backgroundColor: Colors.primaryGlow,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.primary + '40',
+    fontWeight: '700',
     letterSpacing: 1,
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    gap: 1,
-  },
+  scroll: { flex: 1 },
+  scrollContent: { gap: 1 },
 
-  // Banner
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -391,65 +424,55 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     flexWrap: 'wrap',
   },
-  bannerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  bannerDot: { width: 10, height: 10, borderRadius: 5 },
+  bannerInfo: { flex: 1, minWidth: 100, gap: 2 },
+  bannerStatus: { fontFamily: 'monospace', fontSize: FontSize.sm, fontWeight: '700', letterSpacing: 1 },
+  bannerEndpoint: { fontFamily: 'monospace', fontSize: FontSize.micro, color: Colors.textMuted },
+  bannerStats: { flexDirection: 'row', gap: 12 },
+  bannerStat: { alignItems: 'center', gap: 1 },
+  bannerStatValue: { fontFamily: 'monospace', fontSize: FontSize.sm, fontWeight: '700' },
+  bannerStatLabel: { fontFamily: 'monospace', fontSize: FontSize.micro, color: Colors.textMuted, letterSpacing: 0.5 },
+
+  engineSection: {
+    padding: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.surface,
+    gap: 8,
   },
-  bannerInfo: {
-    flex: 1,
-    minWidth: 100,
-    gap: 2,
+  engineScroll: {
+    gap: 8,
+    paddingRight: Spacing.sm,
   },
-  bannerStatus: {
+  engineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surfaceHighlight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  engineChipActive: {
+    backgroundColor: Colors.surfaceElevated,
+    borderColor: Colors.borderBright,
+  },
+  engineLabel: {
     fontFamily: 'monospace',
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
     fontWeight: '700',
-    letterSpacing: 1,
   },
-  bannerEndpoint: {
+  engineModule: {
     fontFamily: 'monospace',
     fontSize: FontSize.micro,
     color: Colors.textMuted,
-  },
-  bannerStats: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  bannerStat: {
-    alignItems: 'center',
-    gap: 1,
-  },
-  bannerStatValue: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-  },
-  bannerStatLabel: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  moduleTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.accentDim,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.full,
-  },
-  moduleTagText: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textBlue,
-    maxWidth: 120,
   },
 
-  // Quick Connect
   quickConnect: {
-    padding: Spacing.md,
+    padding: Spacing.sm,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
@@ -462,11 +485,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  endpointRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
+  endpointRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   endpointInput: {
     flex: 1,
     fontFamily: 'monospace',
@@ -488,12 +507,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 10 : 9,
   },
-  connectBtnDanger: {
-    backgroundColor: Colors.danger,
-  },
-  connectBtnWaiting: {
-    backgroundColor: Colors.warning,
-  },
+  connectBtnDanger: { backgroundColor: Colors.danger },
+  connectBtnWaiting: { backgroundColor: Colors.warning },
   connectBtnText: {
     fontFamily: 'monospace',
     fontSize: FontSize.xs,
@@ -501,17 +516,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  presets: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  presetsLabel: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textMuted,
-  },
+  presets: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  presetsLabel: { fontFamily: 'monospace', fontSize: FontSize.micro, color: Colors.textMuted },
   presetChip: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -520,22 +526,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  presetChipActive: {
-    backgroundColor: Colors.accentDim,
-    borderColor: Colors.accent + '60',
-  },
-  presetChipText: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textSecondary,
-  },
-  presetChipTextActive: {
-    color: Colors.textBlue,
-  },
+  presetChipActive: { backgroundColor: Colors.accentDim, borderColor: Colors.accent + '60' },
+  presetChipText: { fontFamily: 'monospace', fontSize: FontSize.micro, color: Colors.textSecondary },
+  presetChipTextActive: { color: Colors.textBlue },
 
-  // Module Card
   moduleCard: {
-    margin: Spacing.md,
+    margin: Spacing.sm,
     backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
     borderWidth: 1,
@@ -558,15 +554,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  moduleCardRows: {
-    padding: Spacing.sm,
-    gap: 5,
-  },
-  moduleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
+  moduleCardRows: { padding: Spacing.sm, gap: 5 },
+  moduleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   moduleRowLabel: {
     fontFamily: 'monospace',
     fontSize: FontSize.micro,
@@ -581,16 +570,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Guide
-  guide: {
-    margin: Spacing.md,
+  archCard: {
+    margin: Spacing.sm,
+    padding: Spacing.sm,
+    backgroundColor: Colors.primaryGlow,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+    gap: 6,
+  },
+  archHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  archTitle: {
+    fontFamily: 'monospace',
+    fontSize: FontSize.micro,
+    color: Colors.textGreen,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  archBody: {
+    fontFamily: 'monospace',
+    fontSize: FontSize.micro,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+  },
+
+  stepsCard: {
+    margin: Spacing.sm,
     backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.accentDim,
     overflow: 'hidden',
   },
-  guideHeader: {
+  stepsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -599,10 +612,9 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
     backgroundColor: Colors.accentDim,
   },
-  guideTitleText: {
+  stepsTitle: {
     fontFamily: 'monospace',
     fontSize: FontSize.xs,
-    color: Colors.textBlue,
     fontWeight: '700',
     letterSpacing: 1,
   },
@@ -612,11 +624,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 4,
   },
-  stepLeft: {
-    alignItems: 'center',
-    marginRight: 10,
-    width: 22,
-  },
+  stepLeft: { alignItems: 'center', marginRight: 10, width: 22 },
   stepIndex: {
     width: 22,
     height: 22,
@@ -627,18 +635,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepIndexText: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textBlue,
-    fontWeight: '700',
-  },
+  stepIndexText: { fontFamily: 'monospace', fontSize: FontSize.micro, color: Colors.textBlue, fontWeight: '700' },
   stepLine: {
     width: 1,
     flex: 1,
     backgroundColor: Colors.border,
     marginTop: 4,
-    marginBottom: 0,
     minHeight: 20,
   },
   stepContent: {
@@ -648,57 +650,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  stepTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  stepTitle: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.xs,
-    color: Colors.textPrimary,
-    fontWeight: '700',
-  },
-  stepDetail: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textSecondary,
-    lineHeight: 16,
-  },
-
-  // Protocol
-  protocol: {
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.sm,
-    gap: 6,
-  },
-  protoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  protoDir: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    width: 14,
-  },
-  protoType: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textYellow,
-    width: 120,
-  },
-  protoDesc: {
-    fontFamily: 'monospace',
-    fontSize: FontSize.micro,
-    color: Colors.textMuted,
-    flex: 1,
-    lineHeight: 15,
-  },
+  stepTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  stepTitle: { fontFamily: 'monospace', fontSize: FontSize.xs, color: Colors.textPrimary, fontWeight: '700', flex: 1 },
+  stepDetail: { fontFamily: 'monospace', fontSize: FontSize.micro, color: Colors.textSecondary, lineHeight: 16 },
 });

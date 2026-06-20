@@ -3,6 +3,9 @@
 
 export type HookEventType = 'call' | 'ret' | 'ctor' | 'dtor' | 'field_read' | 'field_write' | 'exception';
 
+// Supported game engines
+export type EngineType = 'unity_il2cpp' | 'unity_mono' | 'unreal' | 'godot' | 'native';
+
 export interface RvaInfo {
   rva: string;          // e.g. "0x1A2B3C"
   absoluteAddr: string; // e.g. "0x7F1A2B3C"
@@ -143,4 +146,31 @@ export interface WsConnectionState {
   packetCount: number;
   lastPingTime: number;
   endpoint: string;
+}
+
+// ─── Session Dump ─────────────────────────────────────────────
+export interface SessionDump {
+  meta: {
+    version: string;
+    engine: EngineType;
+    exportedAt: string;        // ISO timestamp
+    sessionDuration: number;   // ms
+    agentEndpoint: string;
+    device?: string;
+  };
+  module: ModuleInfo | null;
+  summary: {
+    totalEvents: number;
+    uniqueClasses: number;
+    uniqueMethods: number;
+    totalFields: number;
+    appliedPatches: number;
+    hookConfigs: number;
+    hotMethods: Array<{ key: string; hits: number }>;
+  };
+  events: HookEvent[];
+  classes: ClassInfo[];
+  methods: MethodInfo[];
+  patches: PatchEntry[];
+  hookConfigs: HookConfig[];
 }

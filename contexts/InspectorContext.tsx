@@ -1,14 +1,18 @@
 // Powered by OnSpace.AI
-// InspectorContext — LIVE mode only, no mock simulation
+// InspectorContext — LIVE mode only. Android on-device loopback only.
 import React, { createContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react';
 import {
   HookEvent, ClassInfo, MethodInfo, ModuleInfo,
-  PatchEntry, HookConfig, HookAction, WsConnectionState,
+  PatchEntry, HookConfig, HookAction, WsConnectionState, EngineType, SessionDump,
 } from '@/types/inspector';
 import { wsBridge } from '@/services/websocketBridge';
+import {
+  buildSessionDump, shareSessionDump,
+  ExportOptions, DEFAULT_EXPORT_OPTIONS,
+} from '@/services/sessionExport';
 import { MAX_LOG_ENTRIES } from '@/constants/config';
 
-export type InspectorTab = 'log' | 'classes' | 'methods' | 'fields' | 'patch' | 'config' | 'ws';
+export type InspectorTab = 'log' | 'classes' | 'methods' | 'fields' | 'patch' | 'config' | 'ws' | 'export';
 
 export interface InspectorContextType {
   // Connection
@@ -18,6 +22,10 @@ export interface InspectorContextType {
   setWsEndpoint: (url: string) => void;
   connectLive: (endpoint?: string) => void;
   disconnectLive: () => void;
+
+  // Engine
+  engineType: EngineType;
+  setEngineType: (e: EngineType) => void;
 
   // Module
   moduleInfo: ModuleInfo | null;
@@ -57,6 +65,11 @@ export interface InspectorContextType {
   setHookConfig: (key: string, action: HookAction, captureDepth?: number, watchCondition?: string) => void;
   toggleHook: (key: string) => void;
   sendHookConfigToDevice: (key: string) => void;
+
+  // Export
+  exportSession: (options?: Partial<ExportOptions>) => Promise<boolean>;
+  lastDump: SessionDump | null;
+  sessionStartTime: number;
 }
 
 export const InspectorContext = createContext<InspectorContextType | undefined>(undefined);
@@ -72,6 +85,7 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
     endpoint: 'ws://127.0.0.1:9999',
   });
 
+  const [engineType, setEngineType] = useState<EngineType>('unity_il2cpp');
   const [moduleInfo, setModuleInfo] = useState<ModuleInfo | null>(null);
   const [events, setEvents] = useState<HookEvent[]>([]);
   const [isPaused, setIsPaused] = useState(false);
@@ -84,9 +98,30 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
   const [selectedEvent, setSelectedEvent] = useState<HookEvent | null>(null);
   const [patches, setPatches] = useState<PatchEntry[]>([]);
   const [hookConfigs, setHookConfigs] = useState<HookConfig[]>([]);
+  const [lastDump, setLastDump] = useState<SessionDump | null>(null);
+  const [sessionStartTime] = useState<number>(Date.now());
 
   const isPausedRef = useRef(isPaused);
   isPausedRef.current = isPaused;
+
+  // Keep refs for export (avoid stale closures)
+  const eventsRef = useRef(events);
+  const classesRef = useRef(classes);
+  const methodsRef = useRef(methods);
+  const patchesRef = useRef(patches);
+  const hookConfigsRef = useRef(hookConfigs);
+  const moduleInfoRef = useRef(moduleInfo);
+  const wsStateRef = useRef(wsState);
+  const engineTypeRef = useRef(engineType);
+
+  eventsRef.current = events;
+  classesRef.current = classes;
+  methodsRef.current = methods;
+  patchesRef.current = patches;
+  hookConfigsRef.current = hookConfigs;
+  moduleInfoRef.current = moduleInfo;
+  wsStateRef.current = wsState;
+  engineTypeRef.current = engineType;
 
   const pushEvent = useCallback((event: HookEvent) => {
     if (isPausedRef.current) return;
@@ -94,7 +129,6 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
       const next = [event, ...prev];
       return next.length > MAX_LOG_ENTRIES ? next.slice(0, MAX_LOG_ENTRIES) : next;
     });
-    // Increment hit count on live method
     setMethods(prev =>
       prev.map(m =>
         m.name === event.methodName && m.className === event.className
@@ -133,12 +167,10 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
             }
             return [...prev, cls];
           });
-          // Upsert methods from this class
           setMethods(prev => {
             const filtered = prev.filter(m => m.className !== cls.name);
             return [...filtered, ...cls.methods];
           });
-          // Upsert hook configs for new methods
           setHookConfigs(prev => {
             const existingKeys = new Set(prev.map(c => c.methodKey));
             const newCfgs: HookConfig[] = cls.methods
@@ -162,7 +194,6 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
           break;
         }
         case 'hook_config_ack': {
-          // Device acknowledged config — no-op, could show toast
           break;
         }
       }
@@ -174,13 +205,11 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
     };
   }, [pushEvent]);
 
-  // Cleanup on unmount
   useEffect(() => () => wsBridge.disconnect(), []);
 
   const connectLive = useCallback((endpoint?: string) => {
     const ep = endpoint ?? wsEndpoint;
     setWsEndpoint(ep);
-    // Switch to LOG tab once connected
     wsBridge.connect(ep);
   }, [wsEndpoint]);
 
@@ -190,7 +219,6 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const togglePause = useCallback(() => setIsPaused(v => !v), []);
-
   const clearEvents = useCallback(() => setEvents([]), []);
 
   // ─── Memory Patches ──────────────────────────────────────────
@@ -210,7 +238,6 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
         label: entry.label,
       });
     } else {
-      // Mark failed immediately if not connected
       setTimeout(() => {
         setPatches(prev => prev.map(p =>
           p.id === entry.id ? { ...p, status: 'failed' } : p
@@ -224,7 +251,7 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const revertPatch = useCallback((id: string) => {
-    const patch = patches.find(p => p.id === id);
+    const patch = patchesRef.current.find(p => p.id === id);
     if (!patch) return;
     setPatches(prev => prev.map(p => p.id === id ? { ...p, status: 'reverted' } : p));
     if (wsBridge.isConnected()) {
@@ -235,7 +262,7 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
         label: `revert:${patch.label}`,
       });
     }
-  }, [patches]);
+  }, []);
 
   // ─── Hook Config ─────────────────────────────────────────────
   const setHookConfig = useCallback((
@@ -256,12 +283,30 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendHookConfigToDevice = useCallback((key: string) => {
-    const cfg = hookConfigs.find(c => c.methodKey === key);
+    const cfg = hookConfigsRef.current.find(c => c.methodKey === key);
     if (!cfg) return;
     if (wsBridge.isConnected()) {
       wsBridge.send('hook_config', cfg);
     }
-  }, [hookConfigs]);
+  }, []);
+
+  // ─── Export ──────────────────────────────────────────────────
+  const exportSession = useCallback(async (options?: Partial<ExportOptions>): Promise<boolean> => {
+    const dump = buildSessionDump({
+      engine: engineTypeRef.current,
+      wsState: wsStateRef.current,
+      sessionStartTime,
+      moduleInfo: moduleInfoRef.current,
+      events: eventsRef.current,
+      classes: classesRef.current,
+      methods: methodsRef.current,
+      patches: patchesRef.current,
+      hookConfigs: hookConfigsRef.current,
+      options: { ...DEFAULT_EXPORT_OPTIONS, ...options },
+    });
+    setLastDump(dump);
+    return shareSessionDump(dump);
+  }, [sessionStartTime]);
 
   return (
     <InspectorContext.Provider
@@ -272,6 +317,8 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
         setWsEndpoint,
         connectLive,
         disconnectLive,
+        engineType,
+        setEngineType,
         moduleInfo,
         events,
         isPaused,
@@ -297,6 +344,9 @@ export function InspectorProvider({ children }: { children: ReactNode }) {
         setHookConfig,
         toggleHook,
         sendHookConfigToDevice,
+        exportSession,
+        lastDump,
+        sessionStartTime,
       }}
     >
       {children}
