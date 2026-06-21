@@ -20,11 +20,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { EngineType } from '@/types/inspector';
 
 const ENGINE_OPTIONS: { key: EngineType; label: string; module: string; color: string; icon: keyof typeof MaterialIcons.glyphMap }[] = [
-  { key: 'unity_il2cpp', label: 'Unity IL2CPP',  module: 'libil2cpp.so',        color: Colors.textCyan,   icon: 'videogame-asset' },
-  { key: 'unity_mono',   label: 'Unity Mono',    module: 'libmono.so',           color: Colors.textBlue,   icon: 'videogame-asset' },
-  { key: 'unreal',       label: 'Unreal Engine', module: 'libUE4.so / libUE5.so',color: Colors.textYellow, icon: 'sports-esports' },
-  { key: 'godot',        label: 'Godot Engine',  module: 'libgodot.so',          color: Colors.textPurple, icon: 'sports-esports' },
-  { key: 'native',       label: 'Native C/C++',  module: 'libgame.so',           color: Colors.textGreen,  icon: 'memory' },
+  { key: 'unity_il2cpp', label: 'Unity IL2CPP',  module: 'libil2cpp.so',          color: Colors.textCyan,   icon: 'videogame-asset' },
+  { key: 'unity_mono',   label: 'Unity Mono',    module: 'libmono.so',            color: Colors.textBlue,   icon: 'videogame-asset' },
+  { key: 'unreal',       label: 'Unreal Engine', module: 'libUE4.so / libUE5.so', color: Colors.textYellow, icon: 'sports-esports'  },
+  { key: 'godot',        label: 'Godot Engine',  module: 'libgodot.so',           color: Colors.textPurple, icon: 'sports-esports'  },
 ];
 
 // ─── Connection Banner ────────────────────────────────────────
@@ -238,27 +237,33 @@ function IntegrationSteps() {
   const { engineType } = useInspector();
   const eng = ENGINE_OPTIONS.find(e => e.key === engineType) ?? ENGINE_OPTIONS[0];
 
+  const PLACEMENT: Record<EngineType, string> = {
+    unity_il2cpp: 'Assets/Plugins/Android/arm64-v8a/libinspect_agent.so',
+    unity_mono:   'Assets/Plugins/Android/arm64-v8a/libinspect_agent.so',
+    unreal:       'Plugins/InspectAgent/Source/ThirdParty/arm64/libinspect_agent.so',
+    godot:        'addons/inspect_agent/libinspect_agent.arm64-v8a.so',
+  };
+
   const steps: { icon: keyof typeof MaterialIcons.glyphMap; title: string; detail: string }[] = [
     {
-      icon: 'code',
-      title: `Add agent to ${eng.label} project`,
-      detail: engineType === 'unity_il2cpp' || engineType === 'unity_mono'
-        ? 'Copy libinspect_agent.cpp into Assets/Plugins/Android/. Add to Android build. The agent auto-hooks IL2CPP methods and emits hook_event messages.'
-        : engineType === 'unreal'
-        ? 'Add as a ThirdParty or GameplayModule. Include InspectAgent.h and call InspectAgent::Init() in your GameInstance::Init(). Supports UClass reflection via UE metadata.'
-        : engineType === 'godot'
-        ? 'Build as a GDExtension .so. Register as extension in .gdextension file. Agent hooks GDScript virtual methods and C++ native calls automatically.'
-        : 'Link libinspect_agent.so at build time. Call inspect_agent_init(9999) early in your main() or JNI_OnLoad. Works with any ARM64 native binary.',
+      icon: 'build',
+      title: 'Build the agent .so (once, works for all engines)',
+      detail: 'Compile libinspect_agent.cpp with the Android NDK (arm64-v8a, API 21+). This produces one single .so that works for Unity, Unreal, and Godot — no engine-specific changes. The agent detects the loaded engine module at runtime via dlopen hooks and /proc/self/maps.',
+    },
+    {
+      icon: 'folder',
+      title: `Drop .so into ${eng.label} project`,
+      detail: `Copy libinspect_agent.so to:\n${PLACEMENT[engineType]}\n\nNo init call required — self-starts via __attribute__((constructor)) when the process loads the .so. It hooks ${eng.module} automatically and opens ws://127.0.0.1:9999.`,
     },
     {
       icon: 'sports-esports',
-      title: 'Install & launch the game',
-      detail: `Install the modified APK on this Android device. When ${eng.module} loads, the agent starts automatically. It hooks all registered methods and opens ws://127.0.0.1:9999 on this device.`,
+      title: 'Build & install the modified APK',
+      detail: `Rebuild the game APK with the agent bundled inside. Install on this Android device. When ${eng.module} loads, the agent starts automatically, hooks it, and begins streaming hook_event and class_dump messages on loopback.`,
     },
     {
       icon: 'bug-report',
       title: 'Connect & inspect live',
-      detail: 'Tap CONNECT in the WS tab or above. Hook events stream in real time. Use the floating panel (bug FAB) to overlay the inspector on top of the running game. Export session dumps via the EXP tab.',
+      detail: 'Tap CONNECT in the WS tab or above. Hook events stream in real time. Use the floating FAB to overlay the inspector on top of the running game. Export full session dumps from the EXP tab.',
     },
   ];
 
@@ -307,7 +312,7 @@ export default function InspectorScreen() {
           </View>
           <View>
             <Text style={styles.appTitle}>RVA INSPECTOR</Text>
-            <Text style={styles.appSub}>Unity · Unreal · Godot · Native ARM64</Text>
+            <Text style={styles.appSub}>Unity · Unreal · Godot · ARM64</Text>
           </View>
         </View>
         <View style={styles.headerRight}>

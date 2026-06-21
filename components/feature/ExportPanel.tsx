@@ -20,7 +20,6 @@ const ENGINE_LABELS: Record<EngineType, { label: string; icon: keyof typeof Mate
   unity_mono:   { label: 'Unity Mono',    icon: 'videogame-asset', color: Colors.textBlue },
   unreal:       { label: 'Unreal Engine', icon: 'sports-esports',  color: Colors.textYellow },
   godot:        { label: 'Godot Engine',  icon: 'sports-esports',  color: Colors.textPurple },
-  native:       { label: 'Native C/C++',  icon: 'memory',          color: Colors.textGreen },
 };
 
 interface ToggleRowProps {

@@ -4,7 +4,7 @@
 export type HookEventType = 'call' | 'ret' | 'ctor' | 'dtor' | 'field_read' | 'field_write' | 'exception';
 
 // Supported game engines
-export type EngineType = 'unity_il2cpp' | 'unity_mono' | 'unreal' | 'godot' | 'native';
+export type EngineType = 'unity_il2cpp' | 'unity_mono' | 'unreal' | 'godot';
 
 export interface RvaInfo {
   rva: string;          // e.g. "0x1A2B3C"
